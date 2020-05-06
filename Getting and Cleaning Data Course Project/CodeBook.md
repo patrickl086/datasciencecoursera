@@ -123,5 +123,5 @@ Updated variable names: 1 "TimeBodyAccelerometerMeanX"
 87 "activity"  
 88 "subject"
 
-1.  Grouped remaining variables by activity and subject and sumarized by
+5.  Grouped remaining variables by activity and subject and sumarized by
     mean. Final "Tidy Data" saved as "tidy\_data.txt"
