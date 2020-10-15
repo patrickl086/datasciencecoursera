@@ -1,0 +1,161 @@
+---
+title: 'Practical Machine Learning: Peer-graded Assignment'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+# Goal
+
+The goal of this project is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. Use the  prediction model to predict 20 different test cases.
+
+# Data Loading and preprocessing
+
+### Loading required libraries 
+```{r include=FALSE}
+library(caret)
+library(rpart)
+library("rpart.plot")
+library(rattle)
+library(e1071)
+library(randomForest)
+library(tidyr) 
+library(dplyr)
+```
+
+###Setting seed for reproducibility
+```{r}
+set.seed(12345)
+```
+
+
+###Loading the data, removing Nans and keeping only required columns
+```{r}
+
+if (!file.exists("pml-training.csv" )){
+        fileUrl = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+        download.file(fileUrl, destfile="./pml-training.csv", method = "curl")
+}
+
+if (!file.exists("pml-testing.csv" )){
+        fileUrl = "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+        download.file(fileUrl, destfile="./pml-testing.csv", method = "curl")
+}
+
+#Read in the data: 
+read_train <- read.csv("pml-training.csv", header = TRUE, sep = ",", na.strings = c("NA", ""))
+read_test <- read.csv("pml-testing.csv", header = TRUE, sep = ",", na.strings = c("NA", ""))
+
+
+train_na <- sapply(read_train, function(x) {sum(is.na(x))})
+read_train <- read_train[,which(train_na == 0)]
+
+test_na <- sapply(read_test, function(x) {sum(is.na(x))})
+read_test <- read_test[, which(test_na == 0)]
+
+train_nzv <- nearZeroVar(read_train, saveMetrics = TRUE)
+read_train <- read_train[,train_nzv$nzv == "FALSE"]
+read_train$classe <- as.factor(read_train$classe)
+
+test_nzv <- nearZeroVar(read_test, saveMetrics = TRUE)
+read_test <- read_test[, test_nzv$nzv == "FALSE"]
+
+train   <- read_train[,-c(1:6)]
+test <- read_test[,-c(1:6)]
+
+dim(train)
+dim(test)
+```
+
+### Plotting the data
+
+```{r}
+plot(train$classe, col="blue", main="Model Variables", xlab="classe", ylab="Frequency")
+```
+
+### Cross-validation
+Spliitting the train data set into 70% for training and 30% for testing. This will allow us to calculate out-of-sample errors
+```{r}
+CVTrain <- createDataPartition(y=train$classe, p=0.7, list=FALSE)    
+cv_train <- train[CVTrain, ]
+cv_test <- train[-CVTrain, ]  
+
+dim(cv_train)
+dim(cv_test)
+```
+
+
+# Model Fitting
+I will fit 5 different models in order to choose the most accurate one for data prediction.  
+
+### Model 1: Decision Trees 
+```{r}
+DT_fit <- rpart(classe ~ ., data=cv_train, method="class")
+DT_predict <- predict(DT_fit, cv_test, type = "class")
+DT_accuracy <- confusionMatrix(cv_test$classe, DT_predict)$overall[1]
+DT_OoSE <- 1 - DT_accuracy
+fancyRpartPlot(DT_fit)
+```
+
+The estimated accuracy for Decision Trees is `r DT_accuracy` and Out-of-Sample Error is `r DT_OoSE`
+
+
+### Model 2: Random Forest
+```{r}
+RF_fit <- randomForest(classe ~ ., data=cv_train, method="class")
+RF_predict <- predict(RF_fit, cv_test, type = "class")
+RF_accuracy <- confusionMatrix(cv_test$classe, RF_predict)$overall[1]
+RF_OoSE <- 1 - RF_accuracy
+```
+The estimated accuracy for Random Forest is `r RF_accuracy` and Out-of-Sample Error is `r RF_OoSE`
+
+
+### Model 3: Support Vector Machines
+```{r}
+SVM_fit <- svm(classe ~ ., data=cv_train)
+SVM_predict <- predict(SVM_fit, cv_test)
+SVM_accuracy <- confusionMatrix(cv_test$classe, SVM_predict)$overall[1]
+SVM_OoSE <- 1- SVM_accuracy
+```
+The estimated accuracy for Support Vector Machines is `r SVM_accuracy` and Out-of-Sample Error is `r SVM_OoSE`
+
+
+### Model 4: Generalized Boosted Regression Models
+```{r include=FALSE}
+GBM_fit <- train(classe ~ ., data=cv_train, method = "gbm")
+GBM_predict <- predict(GBM_fit, cv_test)
+GBM_accuracy <- confusionMatrix(cv_test$classe, GBM_predict)$overall[1]
+GBM_OoSE <- 1 - GBM_accuracy
+```
+The estimated accuracy for Generalized Boosted Regression Models is `r GBM_accuracy` and Out-of-Sample Error is `r GBM_OoSE`
+
+
+### Model 5: Linear Discriminant Analysis
+```{r}
+LDA_fit <- train(classe ~ ., data=cv_train, method = "lda")
+LDA_predict <- predict(LDA_fit, cv_train)
+LDA_accuracy <- confusionMatrix(cv_train$classe, LDA_predict)$overall[1]
+LDA_OoSE <- 1-LDA_accuracy
+```
+The estimated accuracy for Linear Discriminant Analysis is `r LDA_accuracy` and Out-of-Sample Error is `r LDA_OoSE`
+
+
+# Conclusion 
+The highest accuracy and lower Out-of-Sample errors are found using Random Forest (
+`r RF_accuracy`,  `r RF_OoSE` Respectively). I will use this model for the project prediction portion. 
+
+
+# Random Forest predictions
+```{r}
+predict(RF_fit, test, type="class")
+```
+
+
+
