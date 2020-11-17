@@ -1,0 +1,54 @@
+---
+title: "Peer-graded Assignment: R Markdown and Leaflet"
+author: "Patricia Londono"
+date: "17/11/2020"
+output: md_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Instructions
+Create a web page using R Markdown that features a map created with Leaflet.
+
+Host your webpage on either GitHub Pages, RPubs, or NeoCities.
+
+Your webpage must contain the date that you created the document, and it must contain a map created with Leaflet. We would love to see you show off your creativity!
+
+
+
+# Loading required packages
+```{r}
+library(leaflet)
+library(htmltools)
+```
+
+# The World's Top Creative Cities
+Data extracted from: https://www.worldatlas.com/articles/the-world-s-most-creative-cities.html 
+
+
+# Reading the data and the creating the map with appropiate markers
+```{r}
+map <- read.csv("leaflet_data.csv",sep=",")
+
+mymap <- map %>%
+  leaflet() %>%
+  addTiles() %>%
+  addMarkers(popup=paste
+             ("<br>Country: ", 
+               htmlEscape(map$Country), 
+              "<br>City: ", 
+               htmlEscape(map$City), 
+              "<br>Ranking: ",
+               htmlEscape(map$Rank)
+              ) 
+            )
+mymap
+```
+
+
+
+```{r}
+
+```
