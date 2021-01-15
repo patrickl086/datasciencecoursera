@@ -1,0 +1,13 @@
+name: Text_Prediction_App
+title: Text_Prediction_App
+username:
+account: patrickl086
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 3475411
+bundleId: 4098275
+url: https://patrickl086.shinyapps.io/Text_Prediction_App/
+when: 1610676240.44179
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: sbo_model4.rds|train.rds

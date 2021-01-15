@@ -1,0 +1,351 @@
+---
+title: "Capstone Project Milestone Report"
+author: "Patricia Londono"
+date: "06/01/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Project Goal
+
+Develop a predictive model of text starting with a really large, unstructured database of the English language and A Shiny app that takes as input a phrase (multiple words), one clicks submit, and it predicts the next word.
+
+This milestone report presents the initial Exploratory Data Analysis performed and outlines next steps. 
+
+The provided data was collected from publicly available tweets, blogs and news by a web crawler.
+
+
+
+### Loading Required Libraries
+```{r}
+suppressPackageStartupMessages({
+  library(tidytext)
+  library(tidyverse)
+  library(stringr)
+  library(knitr)
+  library(wordcloud2)
+  library(ngram)
+  library(tm)
+  options(java.parameters = "-Xmx1024m")
+  library(RWeka)
+})
+```
+
+
+### Loading the Data
+```{r}
+blogs_file <- "./Data/en_US/en_US.blogs.txt"
+blogs <- readLines(blogs_file, skipNul = TRUE, warn= FALSE)
+
+news_file  <- "./Data/en_US/en_US.news.txt"
+news <- readLines(news_file, skipNul = TRUE, warn= FALSE)
+
+twitter_file   <- "./Data/en_US/en_US.twitter.txt"
+twitter <- readLines(twitter_file, skipNul = TRUE, warn= FALSE)
+```
+
+
+### Data Overview
+Blogs
+```{r, echo=FALSE}
+head(blogs, 3)
+```
+
+News
+```{r, echo=FALSE}
+head(news, 3)
+```
+
+Twitter
+```{r, echo=FALSE}
+head(twitter, 3)
+```
+
+### Data Summary
+```{r}
+
+# 1. Files size in megabytes 
+blogs_size <- file.size(blogs_file)/(2^20)
+news_size <- file.size(news_file)/(2^20)
+twitter_size <- file.size(twitter_file)/(2^20)
+
+# 2. Files line counts
+blogs_length <- length(blogs)
+news_length <- length(news)
+twitter_length <- length(twitter)
+
+# 3. Number of characters
+blogs_char <- nchar(blogs)
+news_char <- nchar(news)
+twitter_char <- nchar(twitter)
+
+# 4. Word Counts
+blogs_words <- wordcount(blogs, sep = " ")
+news_words  <- wordcount(news,  sep = " ")
+twitter_words <- wordcount(twitter, sep = " ")
+
+# 5. Summary Table
+data_summary <- data.frame(File_Name = c("blogs", "news", "twitter"),
+                           File_Size  = c(blogs_size, news_size, twitter_size),
+                           Total_Lines = c(blogs_length, news_length, twitter_length),
+                           Total_Characters =  c(sum(blogs_char), sum(news_char), sum(twitter_char)),
+                            Total_Words = c(blogs_words, news_words, twitter_words))
+
+knitr::kable(data_summary)
+```
+```{r}
+# Saving on object in RData format
+save(data_summary, file = "data_summary.RData")
+```
+
+
+### Data Sampling
+Given the data size I will be working with 40% of the data that will be selected at random. 
+```{r}
+set.seed(1)
+sample <- 0.4
+
+blogs   <- data_frame(text = blogs)
+news    <- data_frame(text = news)
+twitter <- data_frame(text = twitter)
+
+Blogs <- blogs %>% sample_n(., nrow(blogs)*sample)
+News <- news %>% sample_n(., nrow(news)*sample)
+Twitter <- twitter %>% sample_n(., nrow(twitter)*sample)
+
+data1 <- c(Blogs, News, Twitter)
+data <- VCorpus(VectorSource(data1))
+```
+
+
+### Cleaning the sample dataset and creating the corpus
+I will now remove all punctuation, whitespace, numbers, email patterns, profanity words and convert to lower case.
+```{r}
+remove <- content_transformer(function(x, pattern) gsub(pattern, " ", x))
+swear_words <- read.csv("Data/swear_words.csv")
+swear_words <- swear_words[,1]
+    
+data <- tm_map(data, remove, "(f|ht)tp(s?)://(.*)[.][a-z]+")
+data <- tm_map(data, remove, "@[^\\s]+")
+data <- tm_map(data, remove, "\\b[A-Z a-z 0-9._ - ]*[@](.*?)[.]{1,3} \\b")
+data <- tm_map(data, remove, "https\\S*")
+data <- tm_map(data, remove, "@\\S*")
+data <- tm_map(data, remove, "amp")
+data <- tm_map(data, remove, "[\r\n]")
+data <- tm_map(data, remove, "[[:punct:]]")
+data <- tm_map(data, removePunctuation)
+data <- tm_map(data, tolower) 
+data <- tm_map(data, removeNumbers) 
+data <- tm_map(data, removeWords, swear_words)
+data <- tm_map(data, stripWhitespace)
+data <- tm_map(data, PlainTextDocument)
+
+```
+
+
+
+### Finding most frequent words
+```{r}
+tdm <- TermDocumentMatrix(data)
+freq <- sort(rowSums(as.matrix(removeSparseTerms(tdm, 0.999))), decreasing = TRUE)
+FreqWords <- data.frame(word = names(freq), freq = freq)
+
+wordcloud2(data=FreqWords, size=1.6, color='random-dark')
+```
+
+### Finding most common Bigrams
+```{r}
+tokenize2 <- function(x) NGramTokenizer(x, Weka_control(min = 2, max = 2))
+bigramtdm <- TermDocumentMatrix(data, control = list(tokenize = tokenize2))
+
+freqBigram <- sort(rowSums(as.matrix(removeSparseTerms(bigramtdm, 0.999))), decreasing = TRUE)
+bigram <- data.frame(word = names(freqBigram), freq = freqBigram)
+top10Bigram <- bigram[1:10,]
+colnames(top10Bigram) <- c("Bigram","Frequency")
+
+bigramPlot <- ggplot(top10Bigram, aes(y=Frequency, x=Bigram, fill=Frequency) ) +      geom_text(aes(label=Frequency), hjust=0) +
+     geom_bar(stat="Identity") +
+     coord_flip() +
+     labs(title="Top 10 Bigrams") +
+     theme(axis.text.x = element_text(vjust = 0)) +
+     scale_fill_distiller(palette="Spectral")
+
+bigramPlot
+```
+
+### Finding most common Trigrams
+```{r}
+tokenize3 <- function(x) NGramTokenizer(x, Weka_control(min = 3, max = 3))
+trigramtdm <- TermDocumentMatrix(data, control = list(tokenize = tokenize3))
+
+freqTrigram <- sort(rowSums(as.matrix(removeSparseTerms(trigramtdm, 0.999))), decreasing = TRUE)
+trigram <- data.frame(word = names(freqTrigram), freq = freqTrigram)
+top10trigram <- trigram[1:10,]
+colnames(top10trigram) <- c("Trigram","Frequency")
+trigramPlot <- ggplot(top10trigram, aes(y=Frequency, x=Trigram, fill=Frequency) ) +      geom_text(aes(label=Frequency), hjust=0) +
+     geom_bar(stat="Identity") +
+     coord_flip() +
+     labs(title="Top 10 Trigrams") +
+     theme(axis.text.x = element_text(vjust = 0)) +
+     scale_fill_distiller(palette="Spectral")
+
+trigramPlot
+```
+
+### Next Steps
+
+- Build the prediction model able to anticipate the next word by using N-gram Tokenization
+- Develop a Shiny App that will serve as user interface for the prediction model.
+- Create an R presentation that would serve to pitch the project to external users. 
+``
+```{r}
+rm(data1, news, News, blogs, Blogs, twitter, Twitter )
+```
+
+
+
+### Predicting Next word
+
+```{r}
+library(sbo)
+
+train <- unlist(data, use.names=FALSE)
+
+sbo_model5 <- sbo_predtable(object = train, # Sample dataset
+                   N = 5, #Train a 5-gram model
+                   dict = target ~ 0.8, # cover 80% of training corpus
+                   .preprocess = sbo::preprocess, # Preprocessing transformation 
+                   EOS = ".?!:;", # End-Of-Sentence tokens
+                   lambda = 0.4, # Back-off penalization in SBO algorithm
+                   L = 1L, # Number of predictions for input
+                   filtered = "<UNK>" # Exclude the <UNK> token from predictions
+                   )
+
+model <- sbo_predictor(sbo_model5)
+predict(model, "i love")
+
+```
+```{r}
+save(sbo_model5, file="sbo_model5.Rda")
+# ... and, in another session:
+#load("sbo_model5.rda")
+```
+
+
+
+
+
+```{r}
+predict(sbo_model4, "The guy in front of me just bought a pound of bacon, a bouquet, and a case of")
+
+```
+```{r}
+predict(sbo_model4, "You're the reason why I smile everyday. Can you follow me please? It would mean the")
+
+```
+
+```{r}
+predict(sbo_model4, "Hey sunshine, can you follow me and make me the")
+
+```
+
+```{r}
+predict(sbo_model4, "Very early observations on the Bills game: Offense still struggling but the")
+
+```
+
+```{r}
+predict(sbo_model4, "The guy in front of me just bought a pound of bacon, a bouquet, and a case of")
+
+```
+
+
+```{r}
+predict(sbo_model4, "Go on a romantic date at the")
+
+```
+
+
+```{r}
+predict(sbo_model4, "Well I'm pretty sure my granny has some old bagpipes in her garage I'll dust them off and be on my")
+
+```
+
+
+```{r}
+predict(sbo_model4, "Ohhhhh #PointBreak is on tomorrow. Love that film and haven't seen it in quite some")
+
+```
+
+
+```{r}
+predict(sbo_model4, "After the ice bucket challenge Louis will push his long wet hair out of his eyes with his little")
+
+```
+
+
+```{r}
+predict(sbo_model4, "Be grateful for the good times and keep the faith during the")
+
+```
+
+
+```{r}
+predict(sbo_model4, "If this isn't the cutest thing you've ever seen, then you must be")
+
+```
+
+
+```{r}
+predict(sbo_model4, "When you breathe, I want to be the air for you. I'll be there for you, I'd live and I'd")
+
+```
+
+```{r}
+predict(sbo_model4, "I'd give anything to see arctic monkeys this")
+
+```
+
+
+```{r}
+predict(sbo_model4, "When you were in Holland you were like 1 inch away from me but you hadn't time to take a")
+
+```
+
+```{r}
+predict(sbo_model4, "Talking to your mom has the same effect as a hug and helps reduce your")
+
+```
+
+```{r}
+predict(sbo_model4, "I'd just like all of these questions answered, a presentation of evidence, and a jury to settle the")
+
+```
+
+```{r}
+predict(sbo_model4, "I can't deal with unsymetrical things. I can't even hold an uneven number of bags of groceries in each")
+
+```
+
+```{r}
+predict(sbo_model4, "Every inch of you is perfect from the bottom to the")
+
+```
+
+```{r}
+predict(sbo_model4, "I'm thankful my childhood was filled with imagination and bruises from playing")
+
+```
+
+```{r}
+predict(sbo_model4, "I like how the same people are in almost all of Adam Sandler's")
+
+```
+
+```{r}
+predict(sbo_model4, "my")
+
+```
